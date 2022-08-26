@@ -758,6 +758,7 @@ class MasterRunner(DistributedRunner):
         msg_prefix = "All users spawned"
         try:
             while self.user_count != self.target_user_count:
+                logger.info(f'{self.user_count=} != {self.target_user_count=}')
                 gevent.sleep(0.01)
         except gevent.Timeout:
             msg_prefix = (
@@ -972,6 +973,7 @@ class MasterRunner(DistributedRunner):
             elif msg.type == "spawning":
                 self.clients[msg.node_id].state = STATE_SPAWNING
             elif msg.type == "spawning_complete":
+                logger.info(f'received spawning_complete {msg}')
                 self.clients[msg.node_id].state = STATE_RUNNING
                 self.clients[msg.node_id].user_classes_count = msg.data["user_classes_count"]
             elif msg.type == "quit":
@@ -1060,6 +1062,7 @@ class WorkerRunner(DistributedRunner):
         # register listener for when all users have spawned, and report it to the master node
         def on_spawning_complete(user_count):
             assert user_count == sum(self.user_classes_count.values())
+            logger.info(f'sending spawning_complete {self.user_classes_count=}, {self.user_count=}')
             self.client.send(
                 Message(
                     "spawning_complete",
@@ -1118,9 +1121,12 @@ class WorkerRunner(DistributedRunner):
 
         # call spawn_users before stopping the users since stop_users
         # can be blocking because of the stop_timeout
+        logging.info(f'{user_classes_spawn_count=}')
         self.spawn_users(user_classes_spawn_count)
+        logger.info(f'{user_classes_stop_count=}')
         self.stop_users(user_classes_stop_count)
-
+        
+        logger.info('trigger spawning_complete')
         self.environment.events.spawning_complete.fire(user_count=sum(self.user_classes_count.values()))
 
     def heartbeat(self):
