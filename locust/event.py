@@ -231,6 +231,16 @@ class Events:
     """
     Fired when the CPU usage exceeds runners.CPU_WARNING_THRESHOLD (90% by default)
     """
+    
+    heartbeat: EventHook
+    """
+    Fired when master receives a heartbeat from worker
+    """
+    
+    usage_monitor: EventHook
+    """
+    Fired every CPU_MONITOR_INTERVAL with information about CPU and memory usage.
+    """
 
     def __init__(self):
         # For backward compatibility use also values of class attributes
