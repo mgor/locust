@@ -14,7 +14,8 @@ from copy import copy
 from html import escape
 from itertools import chain
 from types import FrameType
-from typing import TYPE_CHECKING, Any, Callable, NoReturn, Protocol, TypedDict, TypeVar, cast
+from typing import (TYPE_CHECKING, Any, Callable, NoReturn, Protocol,
+                    TypedDict, TypeVar, cast)
 
 import gevent
 
@@ -595,7 +596,7 @@ class StatsEntry:
         """
         if not self.use_response_times_cache:
             raise ValueError(
-                "StatsEntry.use_response_times_cache must be set to True if we should be able to calculate the _current_ response time percentile"
+                f"StatsEntry.use_response_times_cache must be set to True if we should be able to calculate the _current_ response time percentile, {self.method=}, {self.name=}"
             )
         # First, we want to determine which of the cached response_times dicts we should
         # use to get response_times for approximately 10 seconds ago.
