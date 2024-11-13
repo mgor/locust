@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from locust import __version__
-
 import functools
 import inspect
 import json
@@ -26,12 +24,15 @@ import psutil
 from gevent.event import Event
 from gevent.pool import Group
 
+from locust import __version__
+
 from . import argument_parser
 from .dispatch import UsersDispatcher
 from .exception import RPCError, RPCReceiveError, RPCSendError
 from .log import get_logs, greenlet_exception_logger
 from .rpc import Message, rpc
-from .stats import RequestStats, StatsError, setup_distributed_stats_event_listeners
+from .stats import (RequestStats, StatsError,
+                    setup_distributed_stats_event_listeners)
 from .util.directory import get_abspaths_in
 from .util.url import is_url
 
@@ -912,6 +913,7 @@ class MasterRunner(DistributedRunner):
     def heartbeat_worker(self) -> NoReturn:
         while True:
             gevent.sleep(HEARTBEAT_INTERVAL)
+            logger.debug('checking if heartbeat has been received in timley manner from workers')
             if self.connection_broken:
                 self.reset_connection()
                 continue
@@ -997,6 +999,11 @@ class MasterRunner(DistributedRunner):
                 logging.debug(
                     "Got KeyboardInterrupt in client_listener. Other greenlets should catch this and shut down."
                 )
+                
+            logger.debug(
+                f"Received {msg.type} message from worker {msg.node_id} (index {self.get_worker_index(msg.node_id)})"
+            )
+
             if msg.type == "client_ready":
                 if not msg.data:
                     logger.error(f"An old (pre 2.0) worker tried to connect ({client_id}). That's not going to work.")
@@ -1140,9 +1147,9 @@ class MasterRunner(DistributedRunner):
             elif msg.type == "exception":
                 self.log_exception(msg.node_id, msg.data["msg"], msg.data["traceback"])
             elif msg.type in self.custom_messages:
-                logger.debug(
-                    f"Received {msg.type} message from worker {msg.node_id} (index {self.get_worker_index(msg.node_id)})"
-                )
+                #logger.debug(
+                #    f"Received {msg.type} message from worker {msg.node_id} (index {self.get_worker_index(msg.node_id)})"
+                #)
                 try:
                     listener, concurrent = self.custom_messages[msg.type]
                     if not concurrent:
@@ -1316,8 +1323,9 @@ class WorkerRunner(DistributedRunner):
     def heartbeat_timeout_checker(self) -> NoReturn:
         while True:
             gevent.sleep(1)
-            if self.last_heartbeat_timestamp and self.last_heartbeat_timestamp < time.time() - MASTER_HEARTBEAT_TIMEOUT:
-                logger.error(f"Didn't get heartbeat from master in over {MASTER_HEARTBEAT_TIMEOUT}s")
+            now_timestamp = time.time()
+            if self.last_heartbeat_timestamp and self.last_heartbeat_timestamp < now_timestamp - MASTER_HEARTBEAT_TIMEOUT:
+                logger.error(f"Didn't get heartbeat reply from master in over {MASTER_HEARTBEAT_TIMEOUT}s, it was sent {self.last_heartbeat_timestamp} it is now {now_timestamp}")
                 self.quit()
 
     def reset_connection(self) -> None:
