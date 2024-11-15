@@ -8,7 +8,8 @@ from contextlib import contextmanager
 from typing import Any
 
 from . import log
-from .exception import InterruptTaskSet, RescheduleTask, RescheduleTaskImmediately, StopUser
+from .exception import (InterruptTaskSet, RescheduleTask,
+                        RescheduleTaskImmediately, StopUser)
 
 
 class EventHook:
@@ -253,6 +254,7 @@ class Events:
 
     :param client_id: worker client id
     :param timestamp: time in seconds since the epoch (float) when the event occured
+    :param response_time: time in seconds since last heartbeat was received (heartbeat interval)
     """
 
     usage_monitor: EventHook

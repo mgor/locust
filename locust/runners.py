@@ -943,6 +943,7 @@ class MasterRunner(DistributedRunner):
             if len(missing_clients_to_be_removed) > 0:
                 for to_remove_client_id in missing_clients_to_be_removed:
                     if self.clients.get(to_remove_client_id) is not None:
+                        logger.debug('Removing worker %s, considered DEAD', to_remove_client_id)
                         del self.clients[to_remove_client_id]
                 if self.state == STATE_RUNNING or self.state == STATE_SPAWNING:
                     # _users_dispatcher is set to none so that during redistribution the dead clients are not picked, alternative is to call self.stop() before start
@@ -1304,6 +1305,7 @@ class WorkerRunner(DistributedRunner):
     def heartbeat(self) -> NoReturn:
         while True:
             try:
+                logger.debug('Sending heartbeat to master')
                 self.client.send(
                     Message(
                         "heartbeat",
@@ -1408,9 +1410,12 @@ class WorkerRunner(DistributedRunner):
                 logger.warning("Received reconnect message from master. Resetting RPC connection.")
                 self.reset_connection()
             elif msg.type == "heartbeat":
+                last_timestamp = self.last_heartbeat_timestamp
                 self.last_heartbeat_timestamp = time.time()
+                response_time = self.last_heartbeat_timestamp - last_timestamp if last_timestamp is not None else None
+
                 self.environment.events.heartbeat_received.fire(
-                    client_id=msg.node_id, timestamp=self.last_heartbeat_timestamp
+                    client_id=msg.node_id, timestamp=self.last_heartbeat_timestamp, response_time=response_time,
                 )
             elif msg.type == "update_user_class":
                 self.environment.update_user_class(msg.data)
