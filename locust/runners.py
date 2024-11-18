@@ -1002,7 +1002,7 @@ class MasterRunner(DistributedRunner):
                 )
                 
             logger.debug(
-                f"Received {msg.type} message from worker {msg.node_id} (index {self.get_worker_index(msg.node_id)})"
+                f"Received {msg.type} message from worker {msg.node_id} (index {self.get_worker_index(msg.node_id)}), {msg.data=}"
             )
 
             if msg.type == "client_ready":
@@ -1189,9 +1189,10 @@ class MasterRunner(DistributedRunner):
                             If None, will send to all attached workers
         """
         if client_id:
-            logger.debug(f"Sending {msg_type} message to worker {client_id}")
+            logger.debug(f"Sending {msg_type} message to worker {client_id}, {data=}")
             self.server.send_to_client(Message(msg_type, data, client_id))
         else:
+            logger.debug(f"Sending {data=} to all clients")
             for client in self.clients.all:
                 logger.debug(f"Sending {msg_type} message to worker {client.id}")
                 self.server.send_to_client(Message(msg_type, data, client.id))
@@ -1412,7 +1413,7 @@ class WorkerRunner(DistributedRunner):
             elif msg.type == "heartbeat":
                 last_timestamp = self.last_heartbeat_timestamp
                 self.last_heartbeat_timestamp = time.time()
-                response_time = self.last_heartbeat_timestamp - last_timestamp if last_timestamp is not None else None
+                response_time = (self.last_heartbeat_timestamp - last_timestamp) * 1000 if last_timestamp is not None else None
 
                 self.environment.events.heartbeat_received.fire(
                     client_id=msg.node_id, timestamp=self.last_heartbeat_timestamp, response_time=response_time,
@@ -1467,7 +1468,7 @@ class WorkerRunner(DistributedRunner):
         :param data: Optional data to send
         :param client_id: (unused)
         """
-        logger.debug("Sending %s message to master" % msg_type)
+        logger.debug("Sending %s message to master, data=%r" % (msg_type, data))
         self.client.send(Message(msg_type, data, self.client_id))
 
     def _send_stats(self) -> None:
