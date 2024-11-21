@@ -6,7 +6,6 @@ import logging.config
 import re
 import socket
 from collections import deque
-from logging.config import ConvertingDict, ConvertingList, valid_ident
 from logging.handlers import QueueHandler, QueueListener
 from time import time
 from typing import Callable, cast
@@ -32,33 +31,19 @@ class LogReader(logging.Handler):
         self.logs.append(self.format(record))
         
         
-class QueueListenerHandler(QueueHandler):
-    def __init__(self, handlers: list[logging.Handler] | ConvertingList, respect_handler_level: bool = False, auto_run: bool = True, queue: Queue | ConvertingDict=Queue(-1)) -> None:
-        queue = self.resolve_queue(queue)
+class AutoStartQueueListener(QueueListener):
+    def __init__(self, queue: Queue, *handlers: logging.Handler, respect_handler_level: bool = False) -> None:
+        super().__init__(queue, *handlers, respect_handler_level=respect_handler_level)
+        
+        self.start()
+        
+        
+class DiscardingQueueHandler(QueueHandler):
+    def __init__(self, queue: Queue) -> None:
         super().__init__(queue)
         
-        handlers = self.resolve_handlers(handlers)
-        self._listener = QueueListener(
-            self.queue,
-            *handlers,
-            respect_handler_level=respect_handler_level,
-        )
-
         self._discarding_started: float | None = None
         self._discarding_count: int = 0
-        
-        if auto_run:
-            self.start()
-            atexit.register(self.stop)
-            
-    def start(self) -> None:
-        self._listener.start()
-        
-    def stop(self) -> None:
-        self._listener.stop()
-        
-    def emit(self, record: logging.LogRecord) -> None:
-        super().emit(record)
         
     def enqueue(self, record: logging.LogRecord) -> None:
         try:
@@ -76,35 +61,6 @@ class QueueListenerHandler(QueueHandler):
 
             self._discarding_count += 1
 
-    @classmethod
-    def resolve_queue(cls, queue: Queue | ConvertingDict) -> Queue:
-        if isinstance(queue, Queue):
-            return queue
-            
-        if '__resolved_value__' in queue:
-            return cast(Queue, queue['__resolved_value__'])
-            
-        class_name = queue.pop('class')
-        class_type = queue.configurator.resolve(class_name) # type: ignore
-        properties = queue.pop('.', None)
-        kwargs = {key: queue[key] for key in queue if isinstance(key, str) and valid_ident(key)}
-        instance = class_type(**kwargs)
-        
-        if properties:
-            for name, value in properties.items():
-                setattr(instance, name, value)
-                
-        queue['__resolved_value__'] = instance
-        
-        return instance
-        
-    @classmethod
-    def resolve_handlers(cls, handlers: list[logging.Handler] | ConvertingList) -> list[logging.Handler]:
-        if not isinstance(handlers, ConvertingList):
-            return handlers
-            
-        return [handlers[index] for index in range(len(handlers))]
-
 
 def setup_logging(loglevel, logfile: str | None = None, maxsize: int = 10000) -> None:
     loglevel = loglevel.upper()
@@ -112,12 +68,6 @@ def setup_logging(loglevel, logfile: str | None = None, maxsize: int = 10000) ->
     LOGGING_CONFIG = {
         "version": 1,
         "disable_existing_loggers": False,
-        "objects": {
-            "queue": {
-                "class": "gevent.queue.Queue",
-                "maxsize": maxsize,
-            },
-        },
         "formatters": {
             "default": {
                 "format": f"[%(asctime)s] {HOSTNAME}/%(levelname)s/%(name)s: %(message)s",
@@ -137,10 +87,23 @@ def setup_logging(loglevel, logfile: str | None = None, maxsize: int = 10000) ->
             },
             "log_reader": {"class": "locust.log.LogReader", "formatter": "default"},
             "queue_listener": {
-                "class": "locust.log.QueueListenerHandler",
-                "handlers": ["cfg://handlers.console", "cfg://handlers.console_plain", "cfg://handlers.log_reader"],
-                "queue": "cfg://objects.queue",
-            }
+                "class": "locust.log.DiscardingQueueHandler",
+                "listener": "locust.log.AutoStartQueueListener",
+                "handlers": ["console", "log_reader"],
+                "queue": {
+                    "()": "gevent.queue.Queue",
+                    "maxsize": maxsize,
+                }
+            },
+            "queue_listener_plain": {
+                "class": "locust.log.DiscardingQueueHandler",
+                "listener": "locust.log.AutoStartQueueListener",
+                "handlers": ["console_plain"],
+                "queue": {
+                    "()": "gevent.queue.Queue",
+                    "maxsize": maxsize,
+                }
+            },
         },
         "loggers": {
             "locust": {
@@ -149,7 +112,7 @@ def setup_logging(loglevel, logfile: str | None = None, maxsize: int = 10000) ->
                 "propagate": False,
             },
             "locust.stats_logger": {
-                "handlers": ["queue_listener"],
+                "handlers": ["queue_listener_plain"],
                 "level": "INFO",
                 "propagate": False,
             },
@@ -167,8 +130,8 @@ def setup_logging(loglevel, logfile: str | None = None, maxsize: int = 10000) ->
             "filename": logfile,
             "formatter": "default",
         }
-        LOGGING_CONFIG["loggers"]["locust"]["handlers"] = ["file", "log_reader"]
-        LOGGING_CONFIG["root"]["handlers"] = ["file", "log_reader"]
+        LOGGING_CONFIG["loggers"]["locust"]["handlers"] = ["file", "queue_listener"]
+        LOGGING_CONFIG["root"]["handlers"] = ["file", "queue_listener"]
 
     logging.config.dictConfig(LOGGING_CONFIG)
 

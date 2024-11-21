@@ -1001,8 +1001,13 @@ class MasterRunner(DistributedRunner):
                     "Got KeyboardInterrupt in client_listener. Other greenlets should catch this and shut down."
                 )
                 
+            if isinstance(msg.data, dict):
+                rid = msg.data.get('rid', None)
+            else:
+                rid = None
+                
             logger.debug(
-                f"Received {msg.type} message from worker {msg.node_id} (index {self.get_worker_index(msg.node_id)}), {msg.data=}"
+                f"Received {msg.type} message from worker {msg.node_id} (index {self.get_worker_index(msg.node_id)}), request {rid}"
             )
 
             if msg.type == "client_ready":
@@ -1188,11 +1193,16 @@ class MasterRunner(DistributedRunner):
         :param client_id: Optional id of the target worker node.
                             If None, will send to all attached workers
         """
+        if data is not None:
+            rid = data.get('rid', None)
+        else:
+            rid = None
+
         if client_id:
-            logger.debug(f"Sending {msg_type} message to worker {client_id}, {data=}")
+            logger.debug(f"Sending {msg_type} message to worker {client_id}, request {rid}")
             self.server.send_to_client(Message(msg_type, data, client_id))
         else:
-            logger.debug(f"Sending {data=} to all clients")
+            logger.debug(f"Sending to all clients, request {rid}")
             for client in self.clients.all:
                 logger.debug(f"Sending {msg_type} message to worker {client.id}")
                 self.server.send_to_client(Message(msg_type, data, client.id))
@@ -1424,7 +1434,11 @@ class WorkerRunner(DistributedRunner):
                 # master says we have finished spawning (happens only once during a normal rampup)
                 self.environment.events.spawning_complete.fire(user_count=msg.data["user_count"])
             elif msg.type in self.custom_messages:
-                logger.debug("Received %s message from master" % msg.type)
+                if isinstance(msg.data, dict):
+                    rid = msg.data.get('rid', None)
+                else:
+                    rid = None
+                logger.debug("Received %s message from master, request %s", msg.type, rid)
                 listener, concurrent = self.custom_messages[msg.type]
                 if not concurrent:
                     listener(environment=self.environment, msg=msg)
@@ -1468,7 +1482,12 @@ class WorkerRunner(DistributedRunner):
         :param data: Optional data to send
         :param client_id: (unused)
         """
-        logger.debug("Sending %s message to master, data=%r" % (msg_type, data))
+        if isinstance(data, dict):
+            rid = data.get('rid', None)
+        else:
+            rid = None
+
+        logger.debug("Sending %s message to master, request %s" % (msg_type, rid))
         self.client.send(Message(msg_type, data, self.client_id))
 
     def _send_stats(self) -> None:
