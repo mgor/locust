@@ -171,10 +171,12 @@ class Runner:
                 #       so it seems a good place to start investigating. My suspicion is that
                 #       the supplied args are emptied whenever the greenlet is dead, so we can
                 #       simply ignore the greenlets with empty args.
+                calltrace = ''.join(traceback.format_stack(user_greenlet.gr_frame))
                 logger.debug(
-                    "ERROR: While calculating number of running users, we encountered a user that didn't have proper args %s (user_greenlet.dead=%s)",
+                    "ERROR: While calculating number of running users, we encountered a user that didn't have proper args %s (user_greenlet.dead=%s):\n%s",
                     user_greenlet,
                     user_greenlet.dead,
+                    calltrace,
                 )
                 continue
             user_classes_count[user.__class__.__name__] += 1
@@ -245,8 +247,9 @@ class Runner:
                 try:
                     user = user_greenlet.args[0]
                 except IndexError:
+                    calltrace = ''.join(traceback.format_stack(user_greenlet.gr_frame))
                     logger.error(
-                        "While stopping users, we encountered a user that didn't have proper args %s", user_greenlet
+                        "While stopping users, we encountered a user that didn't have proper args %s:\n%s", user_greenlet, calltrace
                     )
                     continue
                 if type(user) == self.user_classes_by_name[user_class]:
